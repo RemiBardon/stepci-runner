@@ -30,6 +30,7 @@ export type SSEStep = {
 
 export type SSEStepCheck = {
   id: string
+  type?: string
   json?: object
   schema?: object
   jsonpath?: StepCheckJSONPath | StepCheckMatcher
@@ -157,6 +158,7 @@ export default async function (
         params.check.messages?.forEach((check, id) => {
           // Don't run check if it's not intended for this message
           if (check.id !== message.lastEventId) return
+          if ((check.type ?? 'message') !== message.type) return
 
           if (check.body) {
             const result = checkResult(message.data, check.body)
@@ -229,6 +231,15 @@ export default async function (
         end()
       }
     }
+
+    new Set(
+      params.check?.messages
+        ?.map((message) => message.type)
+        .filter((eventType): eventType is string => eventType !== undefined)
+        ?? []
+    ).forEach((eventType) => {
+      ev.addEventListener(eventType, ev.onmessage)
+    })
   })
 
   return stepResult
