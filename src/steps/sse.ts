@@ -56,15 +56,15 @@ export default async function (
   captures: CapturesStorage,
   schemaValidator: Ajv,
   options?: WorkflowOptions,
-  config?: WorkflowConfig
+  config?: WorkflowConfig,
 ) {
   const stepResult: StepRunResult = {
     type: 'sse',
-    request : {
+    request: {
       url: params.url,
       headers: params.headers,
       size: 0,
-    }
+    },
   }
 
   const ssw = new co2()
@@ -91,7 +91,7 @@ export default async function (
       : undefined
 
     // Closes the `EventSource` and exits as "passed"
-    function end () {
+    const end = () => {
       ev.close()
 
       const messagesBuffer = Buffer.from(messages.map((m) => m.data).join('\n'))
@@ -109,7 +109,7 @@ export default async function (
     }
 
     const timeout = setTimeout(() => {
-      console.debug(`SSE timed out`)
+      console.debug('SSE timed out')
       end()
     }, params.timeout || 10000)
 
@@ -123,7 +123,8 @@ export default async function (
       } else if (ev.readyState === EventSource.CONNECTING) {
         // SSE stream closed by the server
         if (expectedMessages === undefined) {
-          message = 'The SSE stream was closed by the server. If this is expected behavior, please use [`tests.<test>.steps.[step].sse.check.messages`](https://docs.stepci.com/reference/workflow-syntax.html#tests-test-steps-step-sse-check-messages-message).'
+          message =
+            'The SSE stream was closed by the server. If this is expected behavior, please use [`tests.<test>.steps.[step].sse.check.messages`](https://docs.stepci.com/reference/workflow-syntax.html#tests-test-steps-step-sse-check-messages-message).'
         } else {
           message = `The SSE stream was closed by the server before all expected messages were received. Missing IDs: ${JSON.stringify([...expectedMessages], null, 2)}`
         }
@@ -164,6 +165,9 @@ export default async function (
 
       if (params.check) {
         params.check.messages?.forEach((check, id) => {
+          // Don't run check if it's not intended for this message
+          if (check.id !== message.lastEventId) return
+
           if (check.body) {
             const result = checkResult(message.data, check.body)
             if (result.passed && stepResult.checks?.messages)
@@ -205,7 +209,7 @@ export default async function (
                 const result = JSONPath({ path, json })
                 jsonpathResult[path] = checkResult(
                   result[0],
-                  check.jsonpath[path]
+                  check.jsonpath[path],
                 )
               }
 
@@ -213,7 +217,7 @@ export default async function (
                 .map((c: CheckResult) => c.passed)
                 .every((passed) => passed)
 
-              if (passed && stepResult.checks?.messages)
+              if (stepResult.checks?.messages)
                 (stepResult.checks.messages as CheckResults)[check.id] = {
                   expected: check.jsonpath,
                   given: jsonpathResult,
@@ -224,6 +228,15 @@ export default async function (
             }
           }
         })
+      }
+
+      // Mark message as received
+      expectedMessages?.delete(message.lastEventId)
+      // If all expected messages have been received, close connection and return as "passed"
+      if (expectedMessages?.size === 0) {
+        // console.debug('All expected messages received, closing connection…')
+        clearTimeout(timeout)
+        end()
       }
     }
   })
