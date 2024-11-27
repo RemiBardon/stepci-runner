@@ -88,9 +88,9 @@ export type HTTPStepForm = {
 
 export type HTTPRequestPart = {
   type?: string
-  value: string
+  value?: string
+  json?: object
 }
-
 
 export type HTTPStepMultiPartForm = {
   [key: string]: string | StepFile | HTTPRequestPart
@@ -284,12 +284,22 @@ export default async function (
     const formData = new FormData()
     for (const field in params.formData) {
       const appendOptions = {} as FormData.AppendOptions
-      if (typeof params.formData[field] === 'string') {
+      if (typeof params.formData[field] != 'object') {
         formData.append(field, params.formData[field])
-      } else if ((params.formData[field] as HTTPRequestPart).value) {
-        const requestPart = params.formData[field] as HTTPRequestPart
-        appendOptions.contentType = requestPart.type
-        formData.append(field, requestPart.value, appendOptions)
+      } else if (Array.isArray(params.formData[field])) {
+        const stepFiles = params.formData[field] as StepFile[];
+        for (const stepFile of stepFiles) {
+          const filepath = path.join(
+            path.dirname(options?.path || __dirname),
+            stepFile.file,
+          )
+          appendOptions.filename = path.parse(filepath).base;
+          formData.append(
+            field,
+            await fs.promises.readFile(filepath),
+            appendOptions,
+          )
+        }
       } else if ((params.formData[field] as StepFile).file) {
         const stepFile = params.formData[field] as StepFile
         const filepath = path.join(
@@ -298,6 +308,15 @@ export default async function (
         )
         appendOptions.filename = path.parse(filepath).base
         formData.append(field, await fs.promises.readFile(filepath), appendOptions)
+      } else {
+        const requestPart = params.formData[field] as HTTPRequestPart
+        if ('json' in requestPart) {
+          appendOptions.contentType = 'application/json'
+          formData.append(field, JSON.stringify(requestPart.json), appendOptions)
+        } else {
+          appendOptions.contentType = requestPart.type
+          formData.append(field, requestPart.value, appendOptions)
+        }
       }
     }
 
@@ -422,7 +441,7 @@ export default async function (
       if (capture.jsonpath) {
         try {
           const json = JSON.parse(body)
-          captures[name] = JSONPath({ path: capture.jsonpath, json })[0]
+          captures[name] = JSONPath({ path: capture.jsonpath, json, wrap: false })
         } catch {
           captures[name] = undefined
         }
@@ -514,9 +533,9 @@ export default async function (
       try {
         const json = JSON.parse(body)
         for (const path in params.check.jsonpath) {
-          const result = JSONPath({ path, json })
+          const result = JSONPath({ path, json, wrap: false })
           stepResult.checks.jsonpath[path] = checkResult(
-            result[0],
+            result,
             params.check.jsonpath[path]
           )
         }
