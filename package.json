@@ -27,7 +27,7 @@
   "homepage": "https://github.com/StepCI/runner#readme",
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^11.9.3",
-    "@fast-csv/parse": "^4.3.6",
+    "@fast-csv/parse": "^5.0.2",
     "@tgwf/co2": "^0.11.3",
     "@xmldom/xmldom": "^0.8.6",
     "ajv": "^8.11.0",
